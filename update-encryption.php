@@ -113,7 +113,16 @@ if ($command == 'scan') {
         if ($skipTable)
             continue;
         
-        $data = $db->query("SELECT * FROM $table")->fetchAll(PDO::FETCH_ASSOC);
+        $sqlBuilder = "SELECT
+                CONCAT('SELECT * FROM $table WHERE ', GROUP_CONCAT('`', COLUMN_NAME, '`' SEPARATOR ' RLIKE ''^[0-9]{1}:[0-9]{1}:'' OR '), ' LIKE ''^[0-9]{1}:[0-9]{1}:''') as query
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE
+                TABLE_NAME = '$table'
+            AND
+                TABLE_SCHEMA = '{$config['dbname']}'";
+
+        $builtSql = $db->query($sqlBuilder)->fetch(PDO::FETCH_ASSOC);
+        $data = $db->query($builtSql['query'])->fetchAll(PDO::FETCH_ASSOC);
         if (!$data)
             continue;
         foreach ($data as $row) {
