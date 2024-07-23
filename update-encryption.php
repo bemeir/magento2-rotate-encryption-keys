@@ -38,6 +38,7 @@ $params = [
     'dry-run'    => false,
     'key-number' => 1,
     'old-key-number' => 0,
+    'dump'       => false,
     'output'     => 'encrypted-values.csv'
 ];
 
