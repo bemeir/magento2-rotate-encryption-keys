@@ -153,12 +153,9 @@ if ($command == 'scan') {
                                 $decrypted = $crypt->decrypt(base64_decode($chunks[2]));
                             }
                             if ($params['re-encrypt'] && isset($params['key'])) {
-                                $reEncrypted = sprintf("%d:3:%s", $params['key-number'],
-                                    base64_encode($cryptNew->encrypt($decrypted)));
+                                $reEncrypted = sprintf("%d:3:%s", $params['key-number'], base64_encode($cryptNew->encrypt($decrypted)));
                             }
-                            $update = [
-                                $table, $idField, $idValue, $path, $fieldName, $value, $decrypted, $reEncrypted
-                            ];
+                            $update = [$table, $idField, $idValue, $path, $fieldName, $value, $decrypted, $reEncrypted];
                             fputcsv($f, $update);
                             $encryptedField = sprintf("$table::$fieldName");
                             if (!in_array($encryptedField, $encryptedFields)) {
@@ -216,28 +213,28 @@ if ($command == 'scan') {
         $stmt->execute();
         $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        foreach ($data as $row) {
-            $value = $row[$field];
-            $chunks = explode(':', $value);
-            $decrypted = $crypt->decrypt(base64_decode($chunks[2]));
-            $reEncrypted = sprintf("%d:3:%s", $params['key-number'], base64_encode($cryptNew->encrypt($decrypted)));
+        if (!$data) {
+            $moreRowsAvailable = false;
+        } else {
+            foreach ($data as $row) {
+                $value = $row[$field];
+                $chunks = explode(':', $value);
+                $decrypted = $crypt->decrypt(base64_decode($chunks[2]));
+                $reEncrypted = sprintf("%d:3:%s", $params['key-number'], base64_encode($cryptNew->encrypt($decrypted)));
 
-            echo "UPDATING row $idField=" . $idField . ", $field=" . $row[$field] . "; New value = " . $reEncrypted . "\n";
-            $updateQuery =
-                sprintf("UPDATE `%s` SET `%s`='%s' WHERE `%s`='%d' LIMIT 1;", $table, $field, $reEncrypted, $idField,
-                    $row[$idField]);
-            $backupQuery =
-                sprintf("UPDATE `%s` SET `%s`='%s' WHERE `%s`='%d' LIMIT 1;", $table, $field, $value, $idField,
-                    $row[$idField]);
+                echo "UPDATING row $idField=" . $idField . ", $field=" . $row[$field] . "; New value = " . $reEncrypted . "\n";
+                $updateQuery = sprintf("UPDATE `%s` SET `%s`='%s' WHERE `%s`='%d' LIMIT 1;", $table, $field, $reEncrypted, $idField, $row[$idField]);
+                $backupQuery = sprintf("UPDATE `%s` SET `%s`='%s' WHERE `%s`='%d' LIMIT 1;", $table, $field, $value, $idField, $row[$idField]);
 
-            if ($params['dump']) {
-                fwrite($fileHandler, $updateQuery . "\n");
-                fwrite($backupHandler, $backupQuery . "\n");
-            }
-            echo "    " . $updateQuery . "\n";
-            if (!isset($params['dry-run']) || !$params['dry-run']) {
-                echo "UPDATING !\n";
-                $db->query($updateQuery);
+                if ($params['dump']) {
+                    fwrite($fileHandler, $updateQuery . "\n");
+                    fwrite($backupHandler, $backupQuery . "\n");
+                }
+                echo "    " . $updateQuery . "\n";
+                if (!isset($params['dry-run']) || !$params['dry-run']) {
+                    echo "UPDATING !\n";
+                    $db->query($updateQuery);
+                }
             }
         }
         $offset += $limit;
