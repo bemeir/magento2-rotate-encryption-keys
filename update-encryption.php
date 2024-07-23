@@ -1,26 +1,26 @@
 /**
- * This code is licensed under the MIT License.
- * 
- * MIT License
- * 
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- * 
- * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software.
- * 
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
- */
+* This code is licensed under the MIT License.
+*
+* MIT License
+*
+* Permission is hereby granted, free of charge, to any person obtaining a copy
+* of this software and associated documentation files (the "Software"), to deal
+* in the Software without restriction, including without limitation the rights
+* to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+* copies of the Software, and to permit persons to whom the Software is
+* furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in all
+* copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+* AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+* OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+* SOFTWARE.
+*/
 
 <?php
 
@@ -88,7 +88,7 @@ if (!isset($params['old-key']) && is_array($keyLines)) {
         $key = $keyLines[$params['old-key-number']];
     else
         exit("OLD KEY NUMBER IS WRONG, NO KEY WITH NUMBER " . $params['old-key-number'] . " FOUND IN app/etc/env.php\n");
-    
+
 }
 
 $crypt    = new \Magento\Framework\Encryption\Adapter\SodiumChachaIetf($key);
@@ -112,51 +112,68 @@ if ($command == 'scan') {
         }
         if ($skipTable)
             continue;
-        
-        $data = $db->query("SELECT * FROM $table")->fetchAll(PDO::FETCH_ASSOC);
-        if (!$data)
-            continue;
-        foreach ($data as $row) {
-            $idField = '';
-            $idValue = '';
-            $isCoreConfigData = false;
-            if (preg_match("%core_config_data%", $table)) {
-                $idField = 'config_id';
-                $idValue = $row['config_id'];
-                $isCoreConfigData = true;
+
+        $offset = 0;
+        $limit = 1000; // Adjust the chunk size as needed
+        $moreRowsAvailable = true;
+
+        while ($moreRowsAvailable) {
+            $query = $db->prepare("SELECT * FROM $table LIMIT :offset, :limit");
+            $query->bindParam(':offset', $offset, PDO::PARAM_INT);
+            $query->bindParam(':limit', $limit, PDO::PARAM_INT);
+            $query->execute();
+            $data = $query->fetchAll(PDO::FETCH_ASSOC);
+
+            if (!$data) {
+                $moreRowsAvailable = false;
             } else {
-                foreach ($row as $fieldName => $value) {
-                    if (preg_match('%_id$%', $fieldName)) {
-                        $idField = $fieldName;
-                        $idValue = $value;
+                foreach ($data as $row) {
+                    $idField = '';
+                    $idValue = '';
+                    $isCoreConfigData = false;
+                    if (preg_match("%core_config_data%", $table)) {
+                        $idField = 'config_id';
+                        $idValue = $row['config_id'];
+                        $isCoreConfigData = true;
+                    } else {
+                        foreach ($row as $fieldName => $value) {
+                            if (preg_match('%_id$%', $fieldName)) {
+                                $idField = $fieldName;
+                                $idValue = $value;
+                            }
+                        }
                     }
+                    foreach ($row as $fieldName => $value) {
+                        if (($value !== null) && preg_match("%^\d\:\d\:%", $value)) {
+                            $chunks = explode(':', $value);
+                            $decrypted = 'N/A';
+                            $reEncrypted = 'N/A';
+                            $path = $isCoreConfigData ? $row['path'] : 'N/A';
+                            if ($params['decrypt'] && isset($params['key'])) {
+                                $decrypted = $crypt->decrypt(base64_decode($chunks[2]));
+                            }
+                            if ($params['re-encrypt'] && isset($params['key'])) {
+                                $reEncrypted = sprintf("%d:3:%s", $params['key-number'],
+                                    base64_encode($cryptNew->encrypt($decrypted)));
+                            }
+                            $update = [
+                                $table, $idField, $idValue, $path, $fieldName, $value, $decrypted, $reEncrypted
+                            ];
+                            fputcsv($f, $update);
+                            $encryptedField = sprintf("$table::$fieldName");
+                            if (!in_array($encryptedField, $encryptedFields)) {
+                                $encryptedFields[] = $encryptedField;
+                            }
+                        }
+                    }
+                    $offset += $limit;
+
                 }
             }
-            foreach ($row as $fieldName => $value) {
-                if (($value !== null) && preg_match("%^\d\:\d\:%", $value)) {
-                    $chunks      = explode(':', $value);
-                    $decrypted   = 'N/A';
-                    $reEncrypted = 'N/A';
-                    $path        = $isCoreConfigData ? $row['path'] : 'N/A';
-                    if ($params['decrypt'] && isset($params['key'])) {
-                        $decrypted   = $crypt->decrypt(base64_decode($chunks[2]));
-                    }
-                    if ($params['re-encrypt'] && isset($params['key'])) {
-                        $reEncrypted = sprintf("%d:3:%s", $params['key-number'], base64_encode($cryptNew->encrypt($decrypted)));
-                    }
-                    $update = [
-                        $table, $idField, $idValue, $path, $fieldName, $value, $decrypted, $reEncrypted
-                    ];
-                    fputcsv($f, $update);
-                    $encryptedField = sprintf("$table::$fieldName");
-                    if (!in_array($encryptedField, $encryptedFields)) {
-                        $encryptedFields[] = $encryptedField;
-                    }
-                }
-            }
+
         }
-        
     }
+    fclose($f);
     print_r($encryptedFields);
 } else if ($command == 'update-table' || $command == 'update-record') {
     if (!isset($params['table']))
@@ -180,7 +197,10 @@ if ($command == 'scan') {
         $recordFilter = sprintf(" AND `%s`='%d'", $idField, $id);
     $query = sprintf("SELECT * FROM `%s` WHERE `%s` LIKE '%d:3%%' %s", $table, $field, $keyNumber, $recordFilter);
     echo $query . "\n";
-    $data = $db->query($query)->fetchAll(PDO::FETCH_ASSOC);
+
+    $offset = 0;
+    $limit = 1000; // Adjust the chunk size as needed
+    $moreRowsAvailable = true;
 
     $fileHandler = null;
     $backupHandler = null;
@@ -188,25 +208,42 @@ if ($command == 'scan') {
         $fileHandler   = fopen($params['dump'], 'a');
         $backupHandler = fopen('backup-' . $params['dump'], 'a');
     }
-    foreach ($data as $row) {
-        $value = $row[$field];
-        $chunks      = explode(':', $value);
-        $decrypted   = $crypt->decrypt(base64_decode($chunks[2]));
-        $reEncrypted = sprintf("%d:3:%s", $params['key-number'], base64_encode($cryptNew->encrypt($decrypted)));
-        
-        echo "UPDATING row $idField=" . $idField . ", $field=" . $row[$field] . "; New value = " . $reEncrypted . "\n";
-        $updateQuery = sprintf("UPDATE `%s` SET `%s`='%s' WHERE `%s`='%d' LIMIT 1;", $table, $field, $reEncrypted, $idField, $row[$idField]);
-        $backupQuery = sprintf("UPDATE `%s` SET `%s`='%s' WHERE `%s`='%d' LIMIT 1;", $table, $field, $value, $idField, $row[$idField]);
-        
-        if ($params['dump']) {
-            fwrite($fileHandler, $updateQuery . "\n");
-            fwrite($backupHandler, $backupQuery . "\n");
+    while ($moreRowsAvailable) {
+        $query = sprintf("SELECT * FROM `%s` WHERE `%s` LIKE '%d:3%%' %s LIMIT :offset, :limit", $table, $field, $keyNumber, $recordFilter);
+        $stmt = $db->prepare($query);
+        $stmt->bindParam(':offset', $offset, PDO::PARAM_INT);
+        $stmt->bindParam(':limit', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($data as $row) {
+            $value = $row[$field];
+            $chunks = explode(':', $value);
+            $decrypted = $crypt->decrypt(base64_decode($chunks[2]));
+            $reEncrypted = sprintf("%d:3:%s", $params['key-number'], base64_encode($cryptNew->encrypt($decrypted)));
+
+            echo "UPDATING row $idField=" . $idField . ", $field=" . $row[$field] . "; New value = " . $reEncrypted . "\n";
+            $updateQuery =
+                sprintf("UPDATE `%s` SET `%s`='%s' WHERE `%s`='%d' LIMIT 1;", $table, $field, $reEncrypted, $idField,
+                    $row[$idField]);
+            $backupQuery =
+                sprintf("UPDATE `%s` SET `%s`='%s' WHERE `%s`='%d' LIMIT 1;", $table, $field, $value, $idField,
+                    $row[$idField]);
+
+            if ($params['dump']) {
+                fwrite($fileHandler, $updateQuery . "\n");
+                fwrite($backupHandler, $backupQuery . "\n");
+            }
+            echo "    " . $updateQuery . "\n";
+            if (!isset($params['dry-run']) || !$params['dry-run']) {
+                echo "UPDATING !\n";
+                $db->query($updateQuery);
+            }
         }
-        echo "    " . $updateQuery . "\n";
-        if (!isset($params['dry-run']) || !$params['dry-run']) {
-            echo "UPDATING !\n";
-            $db->query($updateQuery);
-        }
+        $offset += $limit;
+    }
+    if ($params['dump']) {
+        fclose($fileHandler);
+        fclose($backupHandler);
     }
 }
-
