@@ -56,8 +56,8 @@ This command DOES  CHANGE  the database!!! Be careful!! Only run it when old enc
 
 ```
 update-encryption.php update-table --table=core_config_data\
-      --id-field=config_id --field=value --key=NEW_KEY --key-index=1\
-       --old-key-index=[0/1]
+      --id-field=config_id --field=value --key=NEW_KEY --key-number=1\
+       --old-key-number=[0/1]
        --dump=rotation.sql
        --dry-run
 ```
