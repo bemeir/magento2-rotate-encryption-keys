@@ -186,7 +186,7 @@ if ($command == 'scan') {
     $backupHandler = null;
     if ($params['dump']) {
         $fileHandler   = fopen($params['dump'], 'a');
-        $backupHandler = fopen('backup-' . $params['dump'], 'a');
+        $backupHandler = fopen($params['dump'] . '.bckp', 'a');
     }
     foreach ($data as $row) {
         $value = $row[$field];
