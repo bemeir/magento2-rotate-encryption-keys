@@ -294,7 +294,7 @@ if ($command == 'scan') {
     $backupHandler = null;
     if (isset($params['dump']) && $params['dump']) {
         $fileHandler   = fopen($params['dump'], 'a');
-        $backupHandler = fopen('backup-' . $params['dump'], 'a');
+        $backupHandler = fopen($params['dump'] . '.bckp', 'a');
     }
     while ( ($row = $data->fetch(PDO::FETCH_ASSOC)) !== false) {
         $value = $row[$field];
