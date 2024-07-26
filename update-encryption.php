@@ -152,9 +152,18 @@ if (!isset($params['old-key']) && is_array($keyLines)) {
     
 }
 
+function decodeKey($key)
+{
+    return (str_starts_with($key, \Magento\Framework\Config\ConfigOptionsListConstants::STORE_KEY_ENCODED_RANDOM_STRING_PREFIX)) ?
+        base64_decode(substr($key, strlen(\Magento\Framework\Config\ConfigOptionsListConstants::STORE_KEY_ENCODED_RANDOM_STRING_PREFIX))) :
+        $key;
+}
+
 $crypt = new \Magento\Framework\Encryption\Adapter\SodiumChachaIetf($key);
-if (isset($params['key']) && $params['key'])
-    $cryptNew = new \Magento\Framework\Encryption\Adapter\SodiumChachaIetf($params['key']);
+if (isset($params['key']) && $params['key']){
+    $encKey = decodeKey($params['key']);
+    $cryptNew = new \Magento\Framework\Encryption\Adapter\SodiumChachaIetf($encKey);
+}
 
 function message($message) {
     echo $message . "\n";
