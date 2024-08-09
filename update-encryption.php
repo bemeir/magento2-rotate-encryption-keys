@@ -2,19 +2,19 @@
 
 /**
  * This code is licensed under the MIT License.
- * 
+ *
  * MIT License
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -149,7 +149,7 @@ if (!isset($params['old-key']) && is_array($keyLines)) {
         $key = $keyLines[$params['old-key-number']];
     else
         exit("OLD KEY NUMBER IS WRONG, NO KEY WITH NUMBER " . $params['old-key-number'] . " FOUND IN app/etc/env.php\n");
-    
+
 }
 
 $crypt = new \Magento\Framework\Encryption\Adapter\SodiumChachaIetf($key);
@@ -221,7 +221,7 @@ function decrypt($encrypted, $key, $keyNumber = null)
             message("Unable to decrypt value encrypted with mcrypt because mcrypt extension is not installed.");
             return null;
         }
-        
+
         $decryptor = $cryptVersion === 2 ?
                    new \Magento\Framework\Encryption\Adapter\Mcrypt($key, MCRYPT_RIJNDAEL_256, MCRYPT_MODE_CBC, null) :
                    new \Magento\Framework\Encryption\Adapter\SodiumChachaIetf($key);
@@ -256,8 +256,8 @@ if ($command == 'scan') {
             message("SKIPPING TABLE $table, because no primary key was identified");
             continue;
         }
-        
-        $data = $db->query("SELECT * FROM $table");
+
+        $data = $db->query("SELECT * FROM `$table`");
         if (!$data)
             continue;
         while( ($row = $data->fetch(PDO::FETCH_ASSOC)) !== false ) {
@@ -285,7 +285,7 @@ if ($command == 'scan') {
                 }
             }
         }
-        
+
     }
     print_r($encryptedFields);
 } else if ($command == 'update-table' || $command == 'update-record') {
@@ -328,10 +328,10 @@ if ($command == 'scan') {
             continue;
         }
         $reEncrypted = sprintf("%d:3:%s", $params['key-number'], base64_encode($cryptNew->encrypt($decrypted)));
-        
+
         $updateQuery = sprintf("UPDATE `%s` SET `%s`='%s' WHERE `%s`='%d' LIMIT 1;", $table, $field, $reEncrypted, $idField, $row[$idField]);
         $backupQuery = sprintf("UPDATE `%s` SET `%s`='%s' WHERE `%s`='%d' LIMIT 1;", $table, $field, $value, $idField, $row[$idField]);
-        
+
         if (isset($params['dump']) && $params['dump']) {
             fwrite($fileHandler, $updateQuery . "\n");
             fwrite($backupHandler, $backupQuery . "\n");
@@ -348,7 +348,7 @@ if ($command == 'scan') {
         $value = $params['value'];
     } else if (isset($params['table']) && isset($params['field']) && isset($params['id'])) {
         $idField = definePrimaryKeyField($db, $params['table']);
-        $record = $db->query(sprintf("SELECT * FROM %s WHERE %s=%d", $params['table'], $idField, (int)$params['id']))->fetchAll();
+        $record = $db->query(sprintf("SELECT * FROM `%s` WHERE %s=%d", $params['table'], $idField, (int)$params['id']))->fetchAll();
         if ($record && isset($record[0])) {
             $value = $record[0][$params['field']];
         }
@@ -356,4 +356,3 @@ if ($command == 'scan') {
     $keyToDecrypt = isset($params['key']) ? $params['key'] : $key;
     message("Decrypted value=" . decrypt($value, $keyToDecrypt));
 }
-
