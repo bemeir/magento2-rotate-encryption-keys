@@ -162,7 +162,7 @@ function message($message) {
 
 function definePrimaryKeyField($db, $table)
 {
-    $metaInfo = $db->query("DESC $table")->fetchAll(PDO::FETCH_ASSOC);
+    $metaInfo = $db->query("DESC `$table`")->fetchAll(PDO::FETCH_ASSOC);
     foreach ($metaInfo as $row) {
         if ($row['Key'] == 'PRI') {
             return $row['Field'];
