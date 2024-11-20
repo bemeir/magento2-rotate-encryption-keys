@@ -323,7 +323,7 @@ if ($command == 'scan') {
     while ( ($row = $data->fetch(PDO::FETCH_ASSOC)) !== false) {
         $value = $row[$field];
         $decrypted   = decrypt($value, $key);
-        if ($decrypted === null) {
+        if (empty($decrypted)) {
             message("ERROR - unable to decrypt value '$value', for the record with $idField=" . $row[$idField] . ". Skipping...");
             continue;
         }
