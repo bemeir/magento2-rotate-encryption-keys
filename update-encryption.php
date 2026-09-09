@@ -1,5 +1,4 @@
 <?php
-
 /**
  * This code is licensed under the MIT License.
  *
@@ -341,7 +340,7 @@ function getCrypt(
             return new \Magento\Framework\Encryption\Adapter\Mcrypt(
                 $key,
                 MCRYPT_BLOWFISH,
-                MCRYPT_MODE_ECB,
+                MCRYPT_BLOWFISH,
                 $initVector
             );
 
@@ -506,6 +505,11 @@ function encryptMagentoValue(
 
 if ($command === 'scan') {
 
+    /*
+     * Store unique encrypted fields along with their detected
+     * table, field and ID field so we can generate the update
+     * commands automatically.
+     */
     $encryptedFields = [];
 
     /*
@@ -758,6 +762,10 @@ if ($command === 'scan') {
                     ]
                 );
 
+                /*
+                 * Store the field details once so we can generate
+                 * the update-table command at the end of the scan.
+                 */
                 $encryptedField =
                     sprintf(
                         "%s::%s",
@@ -766,14 +774,15 @@ if ($command === 'scan') {
                     );
 
                 if (
-                    !in_array(
-                        $encryptedField,
-                        $encryptedFields,
-                        true
+                    !isset(
+                        $encryptedFields[$encryptedField]
                     )
                 ) {
-                    $encryptedFields[] =
-                        $encryptedField;
+                    $encryptedFields[$encryptedField] = [
+                        'table' => $table,
+                        'field' => $fieldName,
+                        'id_field' => $idField,
+                    ];
                 }
             }
         }
@@ -786,9 +795,37 @@ if ($command === 'scan') {
     echo "Output: {$outputFile}\n";
     echo "Target key: #{$targetKeyNumber}\n";
     echo "\n";
+
     echo "Encrypted fields found:\n";
 
-    print_r($encryptedFields);
+    foreach ($encryptedFields as $encryptedField) {
+        echo "  ["
+            . $encryptedField['table']
+            . "::"
+            . $encryptedField['field']
+            . "]"
+            . " -- ID field: "
+            . $encryptedField['id_field']
+            . "\n";
+    }
+
+    echo "\n";
+    echo "Commands to update these fields:\n";
+    echo "\n";
+
+    foreach ($encryptedFields as $encryptedField) {
+        echo "php var/update-encryption.php update-table"
+            . " --table="
+            . $encryptedField['table']
+            . " --id-field="
+            . $encryptedField['id_field']
+            . " --field="
+            . $encryptedField['field']
+            . " --key-number="
+            . $targetKeyNumber
+            . " --dry-run"
+            . "\n";
+    }
 
     echo "\n";
     echo "IMPORTANT: scan mode is read-only. No database changes were made.\n";
@@ -980,10 +1017,6 @@ if (
             . $oldKeyNumber
             . " -> New key #"
             . $targetKeyNumber
-            . " OLD = "
-            . $value
-            . " NEW = "
-            . $reEncrypted
             . "\n";
 
         /*
