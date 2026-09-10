@@ -61,7 +61,7 @@ if (
 ) {
     exit(
         "Usage:\n" .
-        "  php var/update-encryption.php scan --key-number=NUMBER [--output=FILE] [--decrypt] [--re-encrypt]\n" .
+        "  php var/update-encryption.php scan --key-number=NUMBER [--output=FILE] [--decrypt] [--re-encrypt] [--scan-limit=50000]\n" .
         "  php var/update-encryption.php update-table --table=TABLE --field=FIELD --id-field=ID_FIELD --key-number=NUMBER [--dump=FILE] [--dry-run]\n" .
         "  php var/update-encryption.php update-record --table=TABLE --field=FIELD --id-field=ID_FIELD --id=ID --key-number=NUMBER [--dump=FILE] [--dry-run]\n"
     );
@@ -75,6 +75,7 @@ $params = [
     'dry-run'    => false,
     'key-number' => null,
     'output'     => 'encrypted-values.csv',
+    'scan-limit' => 50000,
 ];
 
 /*
@@ -99,6 +100,9 @@ foreach ($argv as $i => $argument) {
 
     } elseif (preg_match('/--output=(.*?)$/', $argument, $m)) {
         $params['output'] = $m[1];
+
+    } elseif (preg_match('/--scan-limit=(\d+)$/', $argument, $m)) {
+        $params['scan-limit'] = (int)$m[1];
 
     } elseif (preg_match('/--key-number=(\d+)$/', $argument, $m)) {
         $params['key-number'] = (int)$m[1];
@@ -387,27 +391,27 @@ function decryptMagentoValue(
          */
         $cryptVersion = 2;
 
-    /*
-     * specified key, specified crypt
-     */
+        /*
+         * specified key, specified crypt
+         */
     } elseif ($partsCount === 3) {
         [$keyVersion, $cryptVersion, $data] = $parts;
 
         $keyVersion = (int)$keyVersion;
         $cryptVersion = (int)$cryptVersion;
 
-    /*
-     * no key version, specified crypt
-     */
+        /*
+         * no key version, specified crypt
+         */
     } elseif ($partsCount === 2) {
         [$cryptVersion, $data] = $parts;
 
         $keyVersion = 0;
         $cryptVersion = (int)$cryptVersion;
 
-    /*
-     * no key version, no crypt version
-     */
+        /*
+         * no key version, no crypt version
+         */
     } elseif ($partsCount === 1) {
         $keyVersion = 0;
         $cryptVersion = 0;
@@ -524,6 +528,10 @@ if ($command === 'scan') {
 
     $tables = $db->query("SHOW TABLES")->fetchAll();
 
+    // Use unbuffered queries during scan so MySQL does not buffer massive tables into memory
+    $db->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, false);
+
+    $scanLimit = $params['scan-limit'];
     $outputFile = $params['output'];
 
     $f = fopen($outputFile, 'w');
@@ -570,15 +578,17 @@ if ($command === 'scan') {
 
         echo "Scanning {$table}...\n";
 
-        $data = $db
-            ->query("SELECT * FROM `$table`")
-            ->fetchAll(PDO::FETCH_ASSOC);
+        $stmt = $db->query("SELECT * FROM `{$table}`");
+        $rowCount = 0;
+        $hasEncryptedValues = false;
 
-        if (!$data) {
-            continue;
-        }
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $rowCount++;
 
-        foreach ($data as $row) {
+            if ($scanLimit > 0 && !$hasEncryptedValues && $rowCount >= $scanLimit) {
+                echo "  Stopped scanning {$table} after {$scanLimit} rows (no encrypted values found).\n";
+                break;
+            }
 
             $idField = '';
             $idValue = '';
@@ -668,6 +678,9 @@ if ($command === 'scan') {
                 if (strlen($decodedPayload) < 28) {
                     continue;
                 }
+
+                // Table contains encrypted data; allow full scan to continue beyond threshold
+                $hasEncryptedValues = true;
 
                 $decrypted = '';
                 $reEncrypted = '';
@@ -786,6 +799,8 @@ if ($command === 'scan') {
                 }
             }
         }
+
+        $stmt->closeCursor();
     }
 
     fclose($f);
@@ -912,9 +927,7 @@ if (
 
     echo $query . "\n";
 
-    $data = $db
-        ->query($query)
-        ->fetchAll(PDO::FETCH_ASSOC);
+    $stmt = $db->query($query);
 
     $fileHandler = null;
     $backupHandler = null;
@@ -934,7 +947,7 @@ if (
             );
     }
 
-    foreach ($data as $row) {
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
 
         $value = $row[$field];
 
@@ -1085,6 +1098,14 @@ if (
         }
     }
 
+    if ($fileHandler) {
+        fclose($fileHandler);
+    }
+
+    if ($backupHandler) {
+        fclose($backupHandler);
+    }
+
     echo "\n";
     echo "Complete.\n";
 
@@ -1094,5 +1115,3 @@ if (
 
     exit;
 }
-
-
